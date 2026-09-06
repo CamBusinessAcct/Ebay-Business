@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>eBay AutoShop</title>
+  <style>
+    :root{
+      font-family:Arial,Helvetica,sans-serif;
+      color:#16181d;
+      background:#f3f5f8;
+    }
+    *{box-sizing:border-box}
+    body{margin:0}
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    header{
+      position:sticky;top:0;z-index:5;
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:14px 20px;background:#fff;border-bottom:1px solid #ddd
+    }
+    header h1{font-size:21px;color:#0867c7;margin:0}
+    .status-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .pill{padding:5px 9px;border:1px solid #d6d9df;border-radius:999px;font-size:12px;background:#fafafa}
+    .ok{background:#eaf8ee;border-color:#a9d9b6}
+    .warn{background:#fff5dc;border-color:#e6ce8d}
+    .layout{
+      display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,520px);
+      gap:14px;padding:14px;min-height:calc(100vh - 61px)
+    }
+    .panel{
+      background:#fff;border:1px solid #dcdfe4;border-radius:12px;padding:14px;
+      box-shadow:0 1px 3px rgba(0,0,0,.04)
+    }
+    .section{border:1px solid #e1e3e8;border-radius:10px;padding:12px;margin-bottom:12px}
+    .section h2,.section h3{margin:0 0 10px;font-size:16px}
+    label{display:block;font-size:13px;font-weight:700;margin-top:8px}
+    input,select,textarea{
+      width:100%;padding:9px;border:1px solid #bfc4cc;border-radius:7px;margin-top:4px;background:#fff
+    }
+    textarea{min-height:150px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    button{border:0;border-radius:7px;padding:9px 12px;background:#e9edf2}
+    .primary{background:#0878e8;color:#fff}
+    .purple{background:#6f42c1;color:#fff}
+    .danger{background:#b42318;color:#fff}
+    .full{width:100%}
+    .drop{
+      border:2px dashed #67a7df;background:#edf7ff;color:#18588c;
+      padding:20px;border-radius:9px;text-align:center
+    }
+    .drop input{border:0;background:transparent}
+    .thumbs,.ali-images{display:flex;gap:8px;overflow-x:auto;padding:8px 0}
+    .thumb,.ali-thumb{
+      flex:0 0 125px;border:1px solid #ddd;border-radius:8px;padding:5px;background:#fff
+    }
+    .thumb img,.ali-thumb img{width:100%;height:115px;object-fit:contain;border-radius:5px}
+    .thumb small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .meta{font-size:13px;line-height:1.5;color:#454b55}
+    .matches{border:1px solid #ddd;border-radius:8px;max-height:220px;overflow:auto}
+    .match{padding:8px;border-bottom:1px solid #eee;cursor:pointer;font-size:13px}
+    .match:last-child{border-bottom:0}
+    .match:hover{background:#f4f8fc}
+    .log{
+      min-height:180px;max-height:280px;overflow:auto;white-space:pre-wrap;
+      background:#0f1319;color:#d8e0ea;padding:10px;border-radius:8px;font:12px/1.45 Consolas,monospace
+    }
+    .hidden{display:none!important}
+    .notice{padding:9px;border-radius:7px;background:#fff7df;border:1px solid #ead59b;font-size:13px}
+    @media(max-width:900px){
+      .layout{grid-template-columns:1fr}
+      header{align-items:flex-start;flex-direction:column}
+    }
+    @media(max-width:560px){
+      .row{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>eBay AutoShop — Web</h1>
+  <div class="status-row">
+    <span id="aliStatus" class="pill warn">AliExpress: checking…</span>
+    <span id="ebayStatus" class="pill warn">eBay: checking…</span>
+    <span id="aiStatus" class="pill warn">OpenAI: checking…</span>
+    <button id="authorizeAli">Authorize AliExpress</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel">
+    <div class="section">
+      <h2>AliExpress Product</h2>
+      <div class="row">
+        <div>
+          <label for="aliInput">Product URL or ID</label>
+          <input id="aliInput" placeholder="https://www.aliexpress.com/item/100500....html">
+        </div>
+        <div style="display:flex;align-items:end">
+          <button id="loadAli" class="primary full">Load AliExpress Product</button>
+        </div>
+      </div>
+
+      <div id="aliPanel" class="hidden">
+        <div id="aliMeta" class="meta" style="margin-top:10px"></div>
+
+        <div class="row">
+          <div>
+            <label for="variant">Variant</label>
+            <select id="variant"></select>
+          </div>
+          <div>
+            <label>Supplier Price</label>
+            <input id="supplierPrice" readonly>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Available Stock</label>
+            <input id="stock" readonly>
+          </div>
+          <div>
+            <label>Delivery</label>
+            <input id="delivery" readonly>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Suggested eBay Price</label>
+            <input id="suggestedPrice" readonly>
+          </div>
+          <div style="display:flex;align-items:end">
+            <button id="useSuggested" class="full">Use Suggested Price</button>
+          </div>
+        </div>
+
+        <div id="aliImages" class="ali-images"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Your Images</h2>
+      <div class="drop">
+        <label for="files">Choose product images</label>
+        <input id="files" type="file" multiple accept="image/*">
+        <div class="meta">Browser-selected images are converted to JPEG before being sent to the server.</div>
+      </div>
+      <div id="thumbs" class="thumbs"></div>
+      <div class="actions">
+        <button id="clearImages">Clear Local Images</button>
+        <button id="compare" class="purple">Compare on eBay</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Top eBay Matches</h3>
+      <div id="matches" class="matches"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <label for="title">Title</label>
+    <input id="title" maxlength="80">
+
+    <div class="row">
+      <div>
+        <label for="price">Price ($)</label>
+        <input id="price" inputmode="decimal">
+      </div>
+      <div>
+        <label for="qty">Quantity</label>
+        <input id="qty" type="number" min="1" max="999" value="1">
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Category Override</h3>
+      <div class="row">
+        <div>
+          <label for="catId">eBay Category ID</label>
+          <input id="catId">
+        </div>
+        <div>
+          <label for="catName">Category Name</label>
+          <input id="catName">
+        </div>
+      </div>
+      <div class="notice" style="margin-top:8px">
+        AliExpress category IDs are not automatically used as eBay category IDs. Compare on eBay first when possible.
+      </div>
+    </div>
+
+    <label for="desc">Description HTML</label>
+    <textarea id="desc"></textarea>
+
+    <div class="actions">
+      <button id="aiImprove">AI Improve Description</button>
+    </div>
+
+    <div class="section">
+      <h3>Apparel Overrides</h3>
+      <div class="row">
+        <div>
+          <label for="size">Size</label>
+          <input id="size">
+        </div>
+        <div>
+          <label for="sizeType">Size Type</label>
+          <select id="sizeType">
+            <option value=""></option>
+            <option>Regular</option>
+            <option>Big & Tall</option>
+            <option>Petite</option>
+            <option>Juniors</option>
+            <option>Maternity</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Ship-From / Item Location</h3>
+
+      <div class="notice">
+        eBay requires the listing's actual item location. AutoShop uses an explicit AliExpress "Ships From" warehouse field when available. If AliExpress only gives product origin/store country, you must confirm or correct it before listing.
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="shipCountry">Country Code</label>
+          <input id="shipCountry" maxlength="2" placeholder="US, CN, GB...">
+        </div>
+
+        <div>
+          <label for="shipLocation">Location</label>
+          <input id="shipLocation" placeholder="China, Los Angeles, CA, etc.">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="shipPostal">Postal Code (optional)</label>
+          <input id="shipPostal" placeholder="Use when the real warehouse postal code is known">
+        </div>
+
+        <div>
+          <label for="shippingService">eBay Shipping Service</label>
+          <input id="shippingService" placeholder="USPSGroundAdvantage">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="shippingCost">Buyer Shipping Cost ($)</label>
+          <input id="shippingCost" inputmode="decimal" value="4.99">
+        </div>
+
+        <div>
+          <label>Location Source</label>
+          <input id="shipSource" readonly>
+        </div>
+      </div>
+
+      <label style="margin-top:10px">
+        <input id="shipConfirmed" type="checkbox" style="width:auto">
+        I confirm this is the actual location the selected product/variant ships from.
+      </label>
+    </div>
+
+    <div class="section">
+      <h3>Condition & Offers</h3>
+      <label><input type="radio" name="condition" value="1000" checked style="width:auto"> New</label>
+      <label><input type="radio" name="condition" value="1500" style="width:auto"> New other / Open box</label>
+      <label><input type="radio" name="condition" value="3000" style="width:auto"> Used</label>
+      <label><input type="radio" name="condition" value="7000" style="width:auto"> For parts / not working</label>
+
+      <label for="condNotes">Condition Notes</label>
+      <input id="condNotes">
+
+      <label style="margin-top:10px">
+        <input id="offer" type="checkbox" checked style="width:auto">
+        Allow Best Offer
+      </label>
+    </div>
+
+    <button id="create" class="primary full">Create & View eBay Listing</button>
+
+    <h3>Status</h3>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const state = {
+  localImages: [],
+  remoteImages: [],
+  category: null,
+  specifics: {},
+  aliProduct: null,
+  sourceProductId: null,
+  shipFrom: null
+};
+
+function log(message) {
+  const box = $('log');
+  box.textContent += String(message) + '\n';
+  box.scrollTop = box.scrollHeight;
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type':'application/json',
+      ...(options.headers || {})
+    }
+  });
+
+  const text = await response.text();
+  let data;
+
+  try { data = text ? JSON.parse(text) : {}; }
+  catch { throw new Error(text || `HTTP ${response.status}`); }
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+
+  return data;
+}
+
+function suggestedSellPrice(cost) {
+  const c = Number(cost);
+  if (!Number.isFinite(c) || c <= 0) return '';
+  const raw = Math.max(c * 2.5, c + 4);
+  return Math.max(.99, Math.ceil(raw) - .01).toFixed(2);
+}
+
+async function fileToJpegDataUrl(file, maxSide = 1800, quality = .9) {
+  const bitmap = await createImageBitmap(file);
+
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  bitmap.close?.();
+
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+function renderLocalImages() {
+  const box = $('thumbs');
+  box.innerHTML = '';
+
+  for (const image of state.localImages) {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+
+    const img = document.createElement('img');
+    img.src = image.dataUrl;
+
+    const name = document.createElement('small');
+    name.textContent = image.name;
+
+    wrap.append(img, name);
+    box.appendChild(wrap);
+  }
+}
+
+function renderRemoteImages(urls) {
+  const box = $('aliImages');
+  box.innerHTML = '';
+
+  for (const url of (urls || []).slice(0, 12)) {
+    const wrap = document.createElement('div');
+    wrap.className = 'ali-thumb';
+
+    const img = document.createElement('img');
+    img.src = url;
+    img.loading = 'lazy';
+
+    wrap.appendChild(img);
+    box.appendChild(wrap);
+  }
+}
+
+
+function defaultShippingServiceForCountry(countryCode, deliveryDays = null) {
+  const country = String(countryCode || '').toUpperCase();
+
+  if (country === 'US') return 'USPSGroundAdvantage';
+
+  const days = Number(deliveryDays);
+
+  if (Number.isFinite(days) && days > 0 && days <= 5) {
+    return 'ExpeditedShippingFromOutsideUS';
+  }
+
+  if (Number.isFinite(days) && days > 0 && days <= 12) {
+    return 'StandardShippingFromOutsideUS';
+  }
+
+  return 'EconomyShippingFromOutsideUS';
+}
+
+function applyShipFrom(shipFrom, deliveryDays = null) {
+  const value = shipFrom || {
+    countryCode:'',
+    location:'',
+    postalCode:'',
+    source:'No location data',
+    confidence:'unknown',
+    requiresConfirmation:true
+  };
+
+  state.shipFrom = { ...value };
+
+  $('shipCountry').value = value.countryCode || '';
+  $('shipLocation').value = value.location || '';
+  $('shipPostal').value = value.postalCode || '';
+  $('shipSource').value =
+    (value.source || 'Unknown') +
+    (value.confidence ? ` · confidence: ${value.confidence}` : '');
+
+  $('shippingService').value =
+    defaultShippingServiceForCountry(
+      value.countryCode,
+      deliveryDays
+    );
+
+  $('shipConfirmed').checked =
+    value.requiresConfirmation === false;
+
+  if (value.requiresConfirmation) {
+    log('Ship-from location needs confirmation before listing.');
+  } else {
+    log('AliExpress returned an explicit ship-from field for this variant/product.');
+  }
+}
+
+function applyVariant(index, setPrice = true) {
+  const product = state.aliProduct;
+  if (!product?.variants?.length) return;
+
+  const variant = product.variants[Math.max(0, Math.min(product.variants.length - 1, Number(index) || 0))];
+
+  $('supplierPrice').value = variant.supplierPrice
+    ? '$' + Number(variant.supplierPrice).toFixed(2)
+    : '';
+
+  $('stock').value = String(variant.stock ?? '');
+
+  const suggested = suggestedSellPrice(variant.supplierPrice);
+  $('suggestedPrice').value = suggested ? '$' + suggested : '';
+
+  if (setPrice && suggested) $('price').value = suggested;
+
+  state.remoteImages = [
+    variant.image,
+    ...(product.images || [])
+  ].filter(Boolean);
+
+  state.remoteImages = [...new Set(state.remoteImages)];
+  renderRemoteImages(state.remoteImages);
+
+  applyShipFrom(
+    variant.shipFrom || product.shipFrom,
+    product.deliveryDays
+  );
+}
+
+function selectedImageForSearch() {
+  if (state.localImages[0]) return state.localImages[0];
+  if (state.remoteImages[0]) return { url:state.remoteImages[0] };
+  return null;
+}
+
+function applyListingData(data) {
+  $('title').value = data.title || data.bestTitle || $('title').value || '';
+
+  if (data.price) $('price').value = data.price;
+  if (data.estimatedPrice != null) $('price').value = Number(data.estimatedPrice).toFixed(2);
+
+  if (data.categoryHint) {
+    state.category = data.categoryHint;
+    $('catId').value = data.categoryHint.id || '';
+    $('catName').value = data.categoryHint.name || '';
+  }
+
+  if (data.description) $('desc').value = data.description;
+  if (data.size) $('size').value = data.size;
+  if (data.sizeType) $('sizeType').value = data.sizeType;
+
+  state.specifics = {
+    ...state.specifics,
+    ...(data.inferredSpecifics || {})
+  };
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+
+    $('aliStatus').textContent =
+      s.aliexpress.connected
+        ? 'AliExpress: connected'
+        : 'AliExpress: not connected';
+    $('aliStatus').className = 'pill ' + (s.aliexpress.connected ? 'ok' : 'warn');
+
+    $('ebayStatus').textContent =
+      s.ebay.listingConfigured
+        ? 'eBay: configured'
+        : 'eBay: setup needed';
+    $('ebayStatus').className = 'pill ' + (s.ebay.listingConfigured ? 'ok' : 'warn');
+
+    $('aiStatus').textContent =
+      s.openai.configured
+        ? 'OpenAI: configured'
+        : 'OpenAI: optional';
+    $('aiStatus').className = 'pill ' + (s.openai.configured ? 'ok' : 'warn');
+  } catch (error) {
+    log('Status check failed: ' + error.message);
+  }
+}
+
+$('authorizeAli').onclick = async () => {
+  try {
+    const data = await api('/api/aliexpress/authorize-url');
+    window.open(data.url, '_blank', 'noopener');
+    log('Opened AliExpress authorization page.');
+  } catch (error) {
+    log('Authorization link error: ' + error.message);
+  }
+};
+
+$('loadAli').onclick = async () => {
+  const input = $('aliInput').value.trim();
+  if (!input) return log('Paste an AliExpress product URL or ID.');
+
+  try {
+    log('Loading AliExpress product…');
+
+    const result = await api('/api/aliexpress/product', {
+      method:'POST',
+      body:JSON.stringify({ input })
+    });
+
+    const p = result.normalized;
+    state.aliProduct = p;
+    state.sourceProductId = p.productId;
+
+    $('aliPanel').classList.remove('hidden');
+
+    $('aliMeta').innerHTML =
+      `<b>${escapeHtml(p.title || 'AliExpress product')}</b><br>` +
+      `Product ID: ${escapeHtml(p.productId)} · ` +
+      `Store: ${escapeHtml(p.store?.name || '—')} · ` +
+      `Sales: ${escapeHtml(p.salesCount || '—')}` +
+      (p.alreadyPosted ? '<br><b>Warning: this product was already posted by this app.</b>' : '');
+
+    $('title').value = String(p.title || '').slice(0,80);
+    $('desc').value = p.descriptionHtml || p.descriptionText || '';
+    $('delivery').value =
+      p.deliveryDays
+        ? `~${p.deliveryDays} days to ${p.shipToCountry || 'US'}`
+        : 'Not returned';
+
+    const propSpecifics = {};
+    for (const [name,value] of Object.entries(p.properties || {})) {
+      if (name && value) propSpecifics[name] = [value];
+    }
+
+    state.specifics = {
+      ...state.specifics,
+      ...propSpecifics
+    };
+
+    $('variant').innerHTML = '';
+
+    if (p.variants?.length) {
+      p.variants.forEach((v,index) => {
+        const opt = document.createElement('option');
+        opt.value = String(index);
+        opt.textContent =
+          `${v.label} — $${Number(v.supplierPrice || 0).toFixed(2)} — stock ${v.stock}`;
+        $('variant').appendChild(opt);
+      });
+      applyVariant(0, true);
+    } else {
+      const opt = document.createElement('option');
+      opt.textContent = 'No variants returned';
+      $('variant').appendChild(opt);
+      state.remoteImages = p.images || [];
+      renderRemoteImages(state.remoteImages);
+      applyShipFrom(p.shipFrom, p.deliveryDays);
+    }
+
+    log(`Loaded AliExpress product ${p.productId}.`);
+    log(`${p.variants?.length || 0} variant(s) available.`);
+  } catch (error) {
+    log('AliExpress lookup failed: ' + error.message);
+  }
+};
+
+$('variant').onchange = () => applyVariant($('variant').value, true);
+
+$('useSuggested').onclick = () => {
+  const value = $('suggestedPrice').value.replace(/[^0-9.]/g,'');
+  if (value) {
+    $('price').value = value;
+    log('Suggested price applied.');
+  }
+};
+
+$('files').onchange = async event => {
+  try {
+    for (const file of [...event.target.files]) {
+      const dataUrl = await fileToJpegDataUrl(file);
+      state.localImages.push({
+        name:file.name.replace(/\.[^.]+$/, '') + '.jpg',
+        dataUrl
+      });
+    }
+
+    renderLocalImages();
+
+    if (state.localImages.length) {
+      log('Auto-filling from first selected image…');
+
+      try {
+        const result = await api('/api/images/autofill', {
+          method:'POST',
+          body:JSON.stringify({ image:state.localImages[0] })
+        });
+
+        applyListingData(result.data);
+        log('Filled from ' + result.data.source + '.');
+      } catch (error) {
+        log('Image auto-fill skipped: ' + error.message);
+      }
+    }
+  } catch (error) {
+    log('Image load error: ' + error.message);
+  }
+
+  event.target.value = '';
+};
+
+$('clearImages').onclick = () => {
+  state.localImages = [];
+  renderLocalImages();
+  log('Local images cleared.');
+};
+
+$('compare').onclick = async () => {
+  const image = selectedImageForSearch();
+  if (!image) return log('Choose an image or load an AliExpress product first.');
+
+  try {
+    log('Comparing image on eBay…');
+
+    const result = await api('/api/ebay/compare', {
+      method:'POST',
+      body:JSON.stringify({ image })
+    });
+
+    const data = result.data;
+    applyListingData(data);
+
+    $('matches').innerHTML = '';
+
+    for (const item of data.matches || []) {
+      const row = document.createElement('div');
+      row.className = 'match';
+      row.textContent =
+        item.title +
+        ' · ' +
+        item.category +
+        (item.price != null ? ` · $${Number(item.price).toFixed(2)}` : '');
+
+      row.onclick = () => {
+        $('title').value = item.title;
+        if (item.itemWebUrl) window.open(item.itemWebUrl, '_blank', 'noopener');
+      };
+
+      $('matches').appendChild(row);
+    }
+
+    log('eBay comparison complete.');
+  } catch (error) {
+    log('eBay comparison failed: ' + error.message);
+  }
+};
+
+$('aiImprove').onclick = async () => {
+  const title = $('title').value.trim();
+  if (!title) return log('Enter a title first.');
+
+  try {
+    log('Generating improved description…');
+
+    const reference =
+      state.aliProduct?.descriptionText ||
+      $('desc').value ||
+      '';
+
+    const result = await api('/api/ai/description', {
+      method:'POST',
+      body:JSON.stringify({ title, reference })
+    });
+
+    $('desc').value = result.description || '';
+    log('Description updated.');
+  } catch (error) {
+    log('Description generation failed: ' + error.message);
+  }
+};
+
+
+for (const id of ['shipCountry','shipLocation','shipPostal']) {
+  $(id).addEventListener('input', () => {
+    if (!state.shipFrom) {
+      state.shipFrom = {
+        countryCode:'',
+        location:'',
+        postalCode:'',
+        source:'Manual entry',
+        confidence:'manual',
+        requiresConfirmation:true
+      };
+    }
+
+    state.shipFrom.requiresConfirmation = true;
+    state.shipFrom.source = 'Manual / corrected item location';
+    state.shipFrom.confidence = 'manual';
+    $('shipSource').value = 'Manual / corrected item location · confidence: manual';
+    $('shipConfirmed').checked = false;
+
+    if (id === 'shipCountry') {
+      $('shippingService').value =
+        defaultShippingServiceForCountry(
+          $('shipCountry').value.trim().toUpperCase(),
+          state.aliProduct?.deliveryDays || null
+        );
+    }
+  });
+}
+
+$('create').onclick = async () => {
+  const title = $('title').value.trim();
+  const price = $('price').value.trim();
+
+  if (!title) return log('Enter a title.');
+  if (!(Number(price) > 0)) return log('Enter a valid price.');
+
+  const images = [
+    ...state.localImages,
+    ...state.remoteImages.map(url => ({ url }))
+  ];
+
+  if (!images.length) return log('Add at least one image.');
+
+  let category = state.category;
+  const manualCategoryId = $('catId').value.trim();
+
+  if (manualCategoryId) {
+    category = {
+      id:manualCategoryId,
+      name:$('catName').value.trim() || category?.name || 'Custom'
+    };
+  }
+
+  if (!category?.id) {
+    return log('An eBay category ID is required. Run Compare on eBay or enter one manually.');
+  }
+
+  const specifics = {
+    ...state.specifics
+  };
+
+  if ($('size').value.trim()) specifics.Size = [$('size').value.trim()];
+  if ($('sizeType').value.trim()) specifics['Size Type'] = [$('sizeType').value.trim()];
+
+  try {
+    log('Creating eBay listing…');
+
+    const result = await api('/api/ebay/listing', {
+      method:'POST',
+      body:JSON.stringify({
+        title,
+        price,
+        description:$('desc').value.trim(),
+        categoryHint:category,
+        inferredSpecifics:specifics,
+        images,
+        quantity:Math.max(1, Math.min(999, Number($('qty').value || 1))),
+        conditionId:document.querySelector('input[name=condition]:checked')?.value || '1000',
+        conditionDesc:$('condNotes').value.trim() || null,
+        bestOffer:$('offer').checked,
+        sourceProductId:state.sourceProductId,
+        deliveryDays:state.aliProduct?.deliveryDays || null,
+        shipFrom:{
+          countryCode:$('shipCountry').value.trim().toUpperCase(),
+          location:$('shipLocation').value.trim(),
+          postalCode:$('shipPostal').value.trim(),
+          source:state.shipFrom?.source || $('shipSource').value.trim(),
+          confidence:state.shipFrom?.confidence || '',
+          requiresConfirmation:Boolean(state.shipFrom?.requiresConfirmation),
+          confirmed:$('shipConfirmed').checked
+        },
+        shippingService:$('shippingService').value.trim(),
+        shippingCost:$('shippingCost').value.trim()
+      })
+    });
+
+    for (const message of result.logs || []) log(message);
+
+    if (result.itemId) {
+      log('SUCCESS! Item ID: ' + result.itemId);
+      window.open('https://www.ebay.com/itm/' + result.itemId, '_blank', 'noopener');
+    }
+  } catch (error) {
+    log('Listing failed: ' + error.message);
+  }
+};
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+refreshStatus();
+</script>
+</body>
+</html>

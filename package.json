@@ -1,0 +1,12 @@
+{
+  "name": "ebay-autoshop-web",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Minimal zero-dependency web version of the eBay + AliExpress AutoShop.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

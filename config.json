@@ -1,0 +1,7 @@
+{
+  "port": 8080,
+  "openai_model": "gpt-4o-mini",
+  "ebay_default_shipping_cost": 4.99,
+  "enable_worker": false,
+  "listing_interval_seconds": 10800
+}
