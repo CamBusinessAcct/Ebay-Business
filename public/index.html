@@ -91,6 +91,26 @@
 <main class="layout">
   <section class="panel">
     <div class="section">
+      <h2>Product Manager</h2>
+      <div class="row">
+        <div><label>Active eBay Listings</label><input id="pmActive" readonly value="Checking…"></div>
+        <div><label>AutoShop Managed</label><input id="pmManaged" readonly value="Checking…"></div>
+      </div>
+      <div class="row">
+        <div><label>Open Orders</label><input id="pmOrders" readonly value="Checking…"></div>
+        <div><label>Listing Cap</label><input id="pmCap" readonly value="250"></div>
+      </div>
+      <div class="row">
+        <div><label>Last Cycle</label><input id="pmLastRun" readonly value="—"></div>
+        <div><label>Next Automatic Cycle</label><input id="pmNext" readonly value="—"></div>
+      </div>
+      <div class="actions">
+        <button id="pmRun" class="primary">Run Product Manager Now</button>
+      </div>
+      <div id="pmMessage" class="notice" style="margin-top:8px">Runs every 5 minutes while this Node server is running. Orders are checked before listing changes.</div>
+    </div>
+
+    <div class="section">
       <h2>AliExpress Product</h2>
       <div class="row">
         <div>
@@ -99,6 +119,13 @@
         </div>
         <div style="display:flex;align-items:end">
           <button id="loadAli" class="primary full">Load AliExpress Product</button>
+        </div>
+      </div>
+
+      <div style="margin-top:10px">
+        <button id="discoverAli" class="purple full">Find & Load a Product Automatically</button>
+        <div class="notice" style="margin-top:8px">
+          AutoShop searches AliExpress dropshipping bestsellers for simple, lower-risk products such as beauty/self-care accessories, toys, stationery/books, organizers, and basic hand tools. It skips products that cannot ship to the US and avoids obvious regulated or hazardous items.
         </div>
       </div>
 
@@ -532,10 +559,39 @@ async function refreshStatus() {
         ? 'OpenAI: configured'
         : 'OpenAI: optional';
     $('aiStatus').className = 'pill ' + (s.openai.configured ? 'ok' : 'warn');
+
+    if (s.productManager) {
+      $('pmActive').value = `${s.productManager.active_count ?? 0} / ${s.productManager.maxListings ?? 250}`;
+      $('pmManaged').value = String(s.productManager.managed_count ?? 0);
+      $('pmOrders').value = String(s.productManager.open_orders ?? 0);
+      $('pmCap').value = String(s.productManager.maxListings ?? 250);
+      $('pmLastRun').value = s.productManager.last_run ? new Date(s.productManager.last_run).toLocaleString() : 'Not run yet';
+      if (s.productManager.last_run && s.productManager.intervalSeconds) {
+        const next = Number(s.productManager.last_run) + Number(s.productManager.intervalSeconds) * 1000;
+        $('pmNext').value = new Date(next).toLocaleString();
+      } else {
+        $('pmNext').value = 'Pending';
+      }
+      $('pmMessage').textContent = s.productManager.last_error
+        ? `Last error: ${s.productManager.last_error}`
+        : (s.productManager.last_action || 'Product Manager is ready.');
+    }
   } catch (error) {
     log('Status check failed: ' + error.message);
   }
 }
+
+$('pmRun').onclick = async () => {
+  try {
+    $('pmMessage').textContent = 'Starting Product Manager cycle…';
+    await api('/api/product-manager/run', { method:'POST', body:'{}' });
+    setTimeout(refreshStatus, 1500);
+  } catch (error) {
+    $('pmMessage').textContent = 'Product Manager start failed: ' + error.message;
+  }
+};
+
+setInterval(refreshStatus, 15000);
 
 $('authorizeAli').onclick = async () => {
   try {
@@ -547,72 +603,110 @@ $('authorizeAli').onclick = async () => {
   }
 };
 
-$('loadAli').onclick = async () => {
-  const input = $('aliInput').value.trim();
-  if (!input) return log('Paste an AliExpress product URL or ID.');
+async function applyAliExpressResult(result, inputForBox = '') {
+  const p = result.normalized;
+  state.aliProduct = p;
+  state.sourceProductId = p.productId;
+
+  if (inputForBox) $('aliInput').value = inputForBox;
+
+  $('aliPanel').classList.remove('hidden');
+
+  $('aliMeta').innerHTML =
+    `<b>${escapeHtml(p.title || 'AliExpress product')}</b><br>` +
+    `Product ID: ${escapeHtml(p.productId)} · ` +
+    `Store: ${escapeHtml(p.store?.name || '—')} · ` +
+    `Sales: ${escapeHtml(p.salesCount || '—')}` +
+    (p.alreadyPosted ? '<br><b>Warning: this product was already posted by this app.</b>' : '');
+
+  $('title').value = String(p.title || '').slice(0,80);
+  $('desc').value = p.descriptionHtml || p.descriptionText || '';
+  $('delivery').value =
+    p.deliveryDays
+      ? `~${p.deliveryDays} days to ${p.shipToCountry || 'US'}`
+      : 'Not returned';
+
+  if (result.categoryHint?.id) {
+    state.category = result.categoryHint;
+    $('catId').value = result.categoryHint.id;
+    $('catName').value = result.categoryHint.name || 'Suggested';
+    log(`eBay category selected automatically: ${result.categoryHint.name} (${result.categoryHint.id}).`);
+  } else {
+    state.category = null;
+    $('catId').value = '';
+    $('catName').value = '';
+    log('eBay category could not be selected automatically. You can still use Compare on eBay.');
+  }
+
+  const propSpecifics = {};
+  for (const [name,value] of Object.entries(p.properties || {})) {
+    if (name && value) propSpecifics[name] = [value];
+  }
+
+  state.specifics = {
+    ...state.specifics,
+    ...propSpecifics
+  };
+
+  $('variant').innerHTML = '';
+
+  if (p.variants?.length) {
+    p.variants.forEach((v,index) => {
+      const opt = document.createElement('option');
+      opt.value = String(index);
+      opt.textContent =
+        `${v.label} — $${Number(v.supplierPrice || 0).toFixed(2)} — stock ${v.stock}`;
+      $('variant').appendChild(opt);
+    });
+    applyVariant(0, true);
+  } else {
+    const opt = document.createElement('option');
+    opt.textContent = 'No variants returned';
+    $('variant').appendChild(opt);
+    state.remoteImages = p.images || [];
+    renderRemoteImages(state.remoteImages);
+    applyShipFrom(p.shipFrom, p.deliveryDays);
+  }
+
+  log(`Loaded AliExpress product ${p.productId}.`);
+  log(`${p.variants?.length || 0} variant(s) available.`);
+}
+
+async function loadAliExpressProduct(input) {
+  const value = String(input || '').trim();
+  if (!value) return log('Paste an AliExpress product URL or ID.');
 
   try {
     log('Loading AliExpress product…');
 
     const result = await api('/api/aliexpress/product', {
       method:'POST',
-      body:JSON.stringify({ input })
+      body:JSON.stringify({ input:value })
     });
 
-    const p = result.normalized;
-    state.aliProduct = p;
-    state.sourceProductId = p.productId;
-
-    $('aliPanel').classList.remove('hidden');
-
-    $('aliMeta').innerHTML =
-      `<b>${escapeHtml(p.title || 'AliExpress product')}</b><br>` +
-      `Product ID: ${escapeHtml(p.productId)} · ` +
-      `Store: ${escapeHtml(p.store?.name || '—')} · ` +
-      `Sales: ${escapeHtml(p.salesCount || '—')}` +
-      (p.alreadyPosted ? '<br><b>Warning: this product was already posted by this app.</b>' : '');
-
-    $('title').value = String(p.title || '').slice(0,80);
-    $('desc').value = p.descriptionHtml || p.descriptionText || '';
-    $('delivery').value =
-      p.deliveryDays
-        ? `~${p.deliveryDays} days to ${p.shipToCountry || 'US'}`
-        : 'Not returned';
-
-    const propSpecifics = {};
-    for (const [name,value] of Object.entries(p.properties || {})) {
-      if (name && value) propSpecifics[name] = [value];
-    }
-
-    state.specifics = {
-      ...state.specifics,
-      ...propSpecifics
-    };
-
-    $('variant').innerHTML = '';
-
-    if (p.variants?.length) {
-      p.variants.forEach((v,index) => {
-        const opt = document.createElement('option');
-        opt.value = String(index);
-        opt.textContent =
-          `${v.label} — $${Number(v.supplierPrice || 0).toFixed(2)} — stock ${v.stock}`;
-        $('variant').appendChild(opt);
-      });
-      applyVariant(0, true);
-    } else {
-      const opt = document.createElement('option');
-      opt.textContent = 'No variants returned';
-      $('variant').appendChild(opt);
-      state.remoteImages = p.images || [];
-      renderRemoteImages(state.remoteImages);
-      applyShipFrom(p.shipFrom, p.deliveryDays);
-    }
-
-    log(`Loaded AliExpress product ${p.productId}.`);
-    log(`${p.variants?.length || 0} variant(s) available.`);
+    await applyAliExpressResult(result, value);
   } catch (error) {
     log('AliExpress lookup failed: ' + error.message);
+  }
+}
+
+$('loadAli').onclick = async () => {
+  await loadAliExpressProduct($('aliInput').value);
+};
+
+$('discoverAli').onclick = async () => {
+  try {
+    log('Searching AliExpress for a reasonable US-deliverable product…');
+    const result = await api('/api/aliexpress/discover', {
+      method:'POST',
+      body:JSON.stringify({})
+    });
+
+    const url = result.productUrl || `https://www.aliexpress.com/item/${result.productId}.html`;
+    await applyAliExpressResult(result, url);
+    log('Auto-selected product: ' + (result.normalized?.title || result.productId));
+  } catch (error) {
+    log('Automatic product search failed: ' + error.message);
   }
 };
 
@@ -812,6 +906,9 @@ $('create').onclick = async () => {
         conditionDesc:$('condNotes').value.trim() || null,
         bestOffer:$('offer').checked,
         sourceProductId:state.sourceProductId,
+        sourceProductUrl:$('aliInput').value.trim(),
+        sourceVariant:state.aliProduct?.variants?.[Number($('variant').value || 0)] || null,
+        autoManaged:true,
         deliveryDays:state.aliProduct?.deliveryDays || null,
         shipFrom:{
           countryCode:$('shipCountry').value.trim().toUpperCase(),
