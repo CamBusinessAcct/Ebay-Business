@@ -3,5 +3,13 @@
   "openai_model": "gpt-4o-mini",
   "ebay_default_shipping_cost": 4.99,
   "enable_worker": false,
-  "listing_interval_seconds": 10800
+  "listing_interval_seconds": 10800,
+  "product_manager_enabled": true,
+  "product_manager_interval_seconds": 300,
+  "product_manager_max_listings": 250,
+  "auto_discovery_feed_pages": 10,
+  "auto_discovery_detail_attempts": 80,
+  "auto_discovery_candidate_limit": 300,
+  "auto_discovery_max_supplier_price": 40,
+  "auto_discovery_max_delivery_days": 18
 }
